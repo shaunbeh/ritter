@@ -1,0 +1,193 @@
+name: riter-cloud
+services:
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: nginx
+    restart: unless-stopped
+
+    ports:
+      - "1139:80"
+
+    volumes:
+      # Nginx virtual hosts
+      - ./conf.d:/etc/nginx/conf.d:ro
+      - ./logs:/var/log/nginx
+
+    depends_on:
+      backend:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+      panel:
+        condition: service_started
+
+    networks:
+      - internal
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: riter-sqlserver
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_PID: Express
+    ports:
+      - "127.0.0.1:5433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "${MSSQL_SA_PASSWORD}" -Q "SELECT 1" -C || exit 1
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: riter-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+    restart: unless-stopped
+    networks:
+      - internal
+
+  minio:
+    image: minio/minio:latest
+    container_name: riter-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - internal
+
+  backend:
+    image: mhakarimi/riter-backend:latest
+    container_name: riter-backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${BACKEND_ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${BACKEND_ASPNETCORE_URLS}
+
+      ConnectionStrings__ApplicationDbContext: ${BACKEND_CONNECTION_STRING}
+      ConnectionStrings__Redis: ${BACKEND_REDIS_CONNECTION}
+
+      # Immutable Host Config
+      Host__Infrastructure__UseRedis: ${Host__Infrastructure__UseRedis}
+      Host__Infrastructure__TokenCleanupIntervalMinutes: ${Host__Infrastructure__TokenCleanupIntervalMinutes}
+      Host__Infrastructure__EnableAutoMigration: ${Host__Infrastructure__EnableAutoMigration}
+      Host__Infrastructure__RecordingWatchdogIntervalMinutes: ${Host__Infrastructure__RecordingWatchdogIntervalMinutes}
+      Host__Infrastructure__RecordingStaleAfterMinutes: ${Host__Infrastructure__RecordingStaleAfterMinutes}
+
+      Host__Security__DataProtection__KeysPath: /app/data-protection-keys
+      Host__Security__Cors__AllowedOrigins__0: ${Host__Security__Cors__AllowedOrigins__0}
+      Host__Security__Cors__AllowedOrigins__1: ${Host__Security__Cors__AllowedOrigins__1}
+
+      Host__Security__Jwt__SecretKey: ${Host__Security__Jwt__SecretKey}
+      Host__Security__Jwt__EncryptionKey: ${Host__Security__Jwt__EncryptionKey}
+      Host__Security__Jwt__Issuer: ${Host__Security__Jwt__Issuer}
+      Host__Security__Jwt__Audience: ${Host__Security__Jwt__Audience}
+      Host__Security__Jwt__ExpiryMinutes: ${Host__Security__Jwt__ExpiryMinutes}
+      Host__Security__Jwt__RefreshTokenExpiryDays: ${Host__Security__Jwt__RefreshTokenExpiryDays}
+      Host__Security__Jwt__RefreshTokenSecret: ${Host__Security__Jwt__RefreshTokenSecret}
+
+      Instance__Domain__PanelUrl: ${Instance__Domain__PanelUrl}
+      Instance__Domain__ServiceBaseUrl: ${Instance__Domain__ServiceBaseUrl}
+
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${BACKEND_PORT}/health"]
+      interval: 30s
+      retries: 3
+    user: "1654:1654"
+    volumes:
+      - dataprotection_keys:/app/data-protection-keys
+
+    restart: unless-stopped
+
+    networks:
+      - internal
+
+  mcp:
+    image: mhakarimi/riter-mcp:latest
+    container_name: riter-mcp
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${BACKEND_ASPNETCORE_ENVIRONMENT}
+      ASPNETCORE_URLS: ${BACKEND_MCP_URLS}
+
+      ConnectionStrings__ApplicationDbContext: ${BACKEND_CONNECTION_STRING}
+      ConnectionStrings__Redis: ${BACKEND_REDIS_CONNECTION}
+
+      Host__Infrastructure__UseRedis: ${Host__Infrastructure__UseRedis}
+
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${MCP_PORT}/health"]
+      interval: 30s
+      retries: 3
+
+    restart: unless-stopped
+
+    networks:
+      - internal
+
+  panel:
+    image: mhakarimi/riter-panel:latest
+    container_name: riter-panel
+    environment:
+      NODE_ENV: production
+      BACKEND_URL: http://riter-backend:${BACKEND_PORT}
+      NEXT_PUBLIC_APP_URL: ${Instance__Domain__PanelUrl}
+      PORT: 3000
+      HOST: 0.0.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    networks:
+      - internal
+
+volumes:
+  sqlserver_data:
+  redis_data:
+  dataprotection_keys:
+  minio_data:
+
+networks:
+  internal:
+    driver: bridge
