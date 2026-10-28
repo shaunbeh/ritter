@@ -1,5 +1,9 @@
-@"
 .env
 .env.*
 !.env.example
-"@ | Set-Content .gitignore
+.deploy_api_key
+logs/
+__pycache__/
+*.pyc
+.venv/
+transcription-deploy.tgz
