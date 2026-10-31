@@ -32,7 +32,14 @@ ALLOWED_EXTENSIONS = {
 }
 LANGUAGE_RE = re.compile(r"[a-z]{2,3}(-[a-z0-9]{2,8})?$")
 
-redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+redis_client = redis.Redis.from_url(
+    settings.redis_url,
+    decode_responses=True,
+    socket_connect_timeout=5,
+    socket_timeout=10,
+    health_check_interval=30,
+    retry_on_timeout=True,
+)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 

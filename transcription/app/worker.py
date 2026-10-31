@@ -19,7 +19,15 @@ GPU_LOCK = "transcription:gpu"
 RECOVER_LOCK = "transcription:recover"
 LOCK_TTL_SECONDS = 6 * 60 * 60
 
-redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+# socket_timeout must exceed BLPOP's wait, otherwise an empty queue raises TimeoutError.
+redis_client = redis.Redis.from_url(
+    settings.redis_url,
+    decode_responses=True,
+    socket_connect_timeout=5,
+    socket_timeout=None,
+    health_check_interval=30,
+    retry_on_timeout=True,
+)
 
 
 def _notify(job: dict) -> None:
@@ -148,7 +156,14 @@ def main() -> None:
     recover()
     log.info("Worker waiting for jobs")
     while True:
-        item = redis_client.blpop(QUEUE_KEY, timeout=5)
+        try:
+            item = redis_client.blpop(QUEUE_KEY, timeout=5)
+        except redis.TimeoutError:
+            continue
+        except redis.RedisError:
+            log.exception("Redis queue wait failed; retrying")
+            time.sleep(2)
+            continue
         if not item:
             continue
         _key, job_id = item
