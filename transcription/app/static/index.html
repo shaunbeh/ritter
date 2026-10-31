@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transcription</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Source+Sans+3:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="brand">Transcription</p>
+        <h1>Upload audio. Get speakers, timestamps, and a summary.</h1>
+        <p class="lede">
+          Paste your API key, choose a file, and wait while the L4 worker finishes the job.
+        </p>
+      </header>
+
+      <form id="upload-form" class="form" novalidate>
+        <label class="field">
+          <span>API key</span>
+          <input
+            id="api-key"
+            name="api_key"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Bearer token from the server .env"
+            required
+          />
+        </label>
+
+        <label class="field">
+          <span>Audio or video file</span>
+          <input
+            id="file"
+            name="file"
+            type="file"
+            accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.webm,.mp4"
+            required
+          />
+        </label>
+
+        <div class="row">
+          <label class="field grow">
+            <span>Language <em>(optional)</em></span>
+            <input
+              id="language"
+              name="language"
+              type="text"
+              maxlength="8"
+              placeholder="en, fa, auto if blank"
+            />
+          </label>
+          <label class="check">
+            <input id="summarize" name="summarize" type="checkbox" checked />
+            <span>Summarize</span>
+          </label>
+          <label class="check">
+            <input id="diarize" name="diarize" type="checkbox" checked />
+            <span>Speakers</span>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="submit" type="submit">Transcribe</button>
+          <button id="copy" type="button" class="ghost" hidden>Copy transcript</button>
+        </div>
+      </form>
+
+      <p id="status" class="status" hidden></p>
+      <p id="error" class="error" hidden></p>
+
+      <section id="results" class="results" hidden>
+        <div id="summary-block" class="summary" hidden>
+          <h2>Summary</h2>
+          <p id="summary-text"></p>
+        </div>
+        <div class="transcript">
+          <h2>Transcript</h2>
+          <ol id="segments"></ol>
+        </div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

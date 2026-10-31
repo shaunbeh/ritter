@@ -3,18 +3,21 @@ import re
 import secrets
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import urlparse
 
 import redis
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app import db, storage
 from app.contract import QUEUE_KEY, job_body
 
 log = logging.getLogger(__name__)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 ALLOWED_EXTENSIONS = {
     ".wav",
@@ -54,6 +57,12 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Transcription", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/")
+def ui() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 def require_api_key(
