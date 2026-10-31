@@ -152,9 +152,6 @@ def process(session_id: str) -> None:
         def on_progress(value: int, message: str) -> None:
             if is_cancelled(session_id):
                 raise CancelledError("پردازش توسط کاربر لغو شد")
-            live = db.get_session(session_id)
-            if live is None or live["status"] != "processing":
-                raise CancelledError("پردازش لغو یا جایگزین شد")
             db.set_session_progress(session_id, value, message)
 
         result = transcribe_file(

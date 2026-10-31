@@ -85,7 +85,10 @@ def _report(progress: ProgressFn | None, value: int, message: str) -> None:
         return
     try:
         progress(value, message)
-    except Exception:
+    except Exception as exc:
+        # Let cancel/abort bubble out of long Hub downloads.
+        if exc.__class__.__name__ in {"CancelledError", "TimeoutError"}:
+            raise
         log.exception("Progress callback failed")
 
 
