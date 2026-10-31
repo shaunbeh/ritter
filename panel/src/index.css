@@ -1,7 +1,47 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "IRANSans";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("/fonts/IRANSansXFaNum-Light.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IRANSans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/IRANSansXFaNum-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IRANSans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/IRANSansXFaNum-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IRANSans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/IRANSansXFaNum-DemiBold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IRANSans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/IRANSansXFaNum-Bold.woff2") format("woff2");
+}
+
 @theme {
-  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "IRANSans", ui-sans-serif, system-ui, sans-serif;
   --color-bg: #f3f0ea;
   --color-surface: #fffdf8;
   --color-ink: #1c1917;
@@ -15,6 +55,10 @@
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  direction: rtl;
 }
 
 html,
@@ -32,6 +76,8 @@ body {
     radial-gradient(circle at 88% 0%, #f5e6d3 0%, transparent 36%),
     var(--color-bg);
   direction: rtl;
+  text-align: start;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -39,4 +85,12 @@ input,
 select,
 textarea {
   font: inherit;
+  text-align: start;
+}
+
+/* Keep numeric progress LTR so % reads naturally in RTL layouts */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
 }

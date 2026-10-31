@@ -1,4 +1,6 @@
 QUEUE_KEY = "transcription:sessions"
+GPU_LOCK = "transcription:gpu"
+CANCEL_PREFIX = "transcription:cancel:"
 
 STATUS_LABELS = {
     "draft": "پیش‌نویس",

@@ -9,15 +9,26 @@ import redis
 
 from app.config import redact, settings
 from app import db, storage
-from app.contract import QUEUE_KEY
+from app.contract import CANCEL_PREFIX, GPU_LOCK, QUEUE_KEY
 from app.summarize import summarize
 from app.transcribe import LowVramError, ensure_vram, transcribe_file
 
 log = logging.getLogger(__name__)
 
-GPU_LOCK = "transcription:gpu"
 RECOVER_LOCK = "transcription:recover"
 LOCK_TTL_SECONDS = 6 * 60 * 60
+
+
+def _cancel_key(session_id: str) -> str:
+    return f"{CANCEL_PREFIX}{session_id}"
+
+
+def is_cancelled(session_id: str) -> bool:
+    return bool(redis_client.get(_cancel_key(session_id)))
+
+
+def clear_cancel(session_id: str) -> None:
+    redis_client.delete(_cancel_key(session_id))
 
 redis_client = redis.Redis.from_url(
     settings.redis_url,
@@ -91,18 +102,28 @@ def _concat_assets(assets: list[dict], dest: str) -> None:
                 pass
 
 
+class CancelledError(RuntimeError):
+    pass
+
+
 def process(session_id: str) -> None:
     session = db.get_session(session_id)
-    if session is None or session["status"] in {"completed", "failed", "processing"}:
+    if session is None or session["status"] in {"completed", "failed"}:
+        return
+    # Skip stale queue copies while this id is already running.
+    if session["status"] == "processing":
         return
 
     if not redis_client.set(GPU_LOCK, session_id, nx=True, ex=LOCK_TTL_SECONDS):
-        redis_client.rpush(QUEUE_KEY, session_id)
+        # Avoid duplicate flood when another job holds the GPU.
+        if redis_client.llen(QUEUE_KEY) < 3:
+            redis_client.rpush(QUEUE_KEY, session_id)
         time.sleep(5)
         return
 
     path = None
     retry_delay = 0
+    clear_cancel(session_id)
     try:
         ensure_vram()
         if not db.mark_session_processing(session_id):
@@ -129,6 +150,11 @@ def process(session_id: str) -> None:
         )
 
         def on_progress(value: int, message: str) -> None:
+            if is_cancelled(session_id):
+                raise CancelledError("پردازش توسط کاربر لغو شد")
+            live = db.get_session(session_id)
+            if live is None or live["status"] != "processing":
+                raise CancelledError("پردازش لغو یا جایگزین شد")
             db.set_session_progress(session_id, value, message)
 
         result = transcribe_file(
@@ -138,7 +164,13 @@ def process(session_id: str) -> None:
             session["min_speakers"],
             session["max_speakers"],
             progress=on_progress,
+            should_abort=lambda: is_cancelled(session_id),
         )
+        if is_cancelled(session_id):
+            raise CancelledError("پردازش توسط کاربر لغو شد")
+        live = db.get_session(session_id)
+        if live is None or live["status"] != "processing":
+            raise CancelledError("پردازش لغو یا جایگزین شد")
         if session["summarize"]:
             db.set_session_progress(session_id, 92, "در حال خلاصه‌سازی با مدل زبانی")
             summary, summary_error = summarize(result["segments"], result.get("language"))
@@ -147,6 +179,13 @@ def process(session_id: str) -> None:
                 result["summary_error"] = summary_error
         db.complete_session(session_id, result)
         log.info("Completed session %s", session_id)
+    except CancelledError as exc:
+        log.warning("Session %s cancelled: %s", session_id, exc)
+        # Force-retry already set status to queued; leave it for the next pop.
+        live = db.get_session(session_id)
+        if live and live["status"] == "processing":
+            db.requeue_session(session_id)
+            redis_client.rpush(QUEUE_KEY, session_id)
     except LowVramError as exc:
         log.warning("%s; session %s stays queued", exc, session_id)
         db.requeue_session(session_id)
@@ -156,6 +195,7 @@ def process(session_id: str) -> None:
         log.exception("Session %s failed", session_id)
         db.fail_session(session_id, redact(str(exc)))
     finally:
+        clear_cancel(session_id)
         if path and os.path.exists(path):
             os.unlink(path)
         current = redis_client.get(GPU_LOCK)

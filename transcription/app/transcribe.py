@@ -147,6 +147,7 @@ def _load_with_download_progress(
     span_pct: int,
     timeout_seconds: int,
     stall_seconds: int,
+    should_abort: Callable[[], bool] | None = None,
 ) -> object:
     stop = threading.Event()
     watcher = threading.Thread(
@@ -170,6 +171,8 @@ def _load_with_download_progress(
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(loader)
             while True:
+                if should_abort and should_abort():
+                    raise TimeoutError(f"{label}: cancelled")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError(f"{label}: overall timeout")
@@ -196,6 +199,7 @@ def transcribe_file(
     min_speakers: int | None,
     max_speakers: int | None,
     progress: ProgressFn | None = None,
+    should_abort: Callable[[], bool] | None = None,
 ) -> dict:
     import torch
     import whisperx
@@ -262,6 +266,7 @@ def transcribe_file(
             span_pct=14,
             timeout_seconds=align_timeout,
             stall_seconds=align_stall_seconds,
+            should_abort=should_abort,
         )
         try:
             _report(progress, 72, "اعمال هم‌ترازی روی رونوشت")
@@ -318,6 +323,7 @@ def transcribe_file(
                 span_pct=10,
                 timeout_seconds=int(os.getenv("DIARIZE_TIMEOUT_SECONDS", "1800")),
                 stall_seconds=int(os.getenv("DIARIZE_STALL_SECONDS", "180")),
+                should_abort=should_abort,
             )
             call_kwargs = {}
             if min_speakers is not None:

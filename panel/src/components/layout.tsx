@@ -27,13 +27,13 @@ export function AppLayout() {
   const { user, logout } = useAuth()
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-7xl gap-6 p-4 md:p-6">
+    <div className="mx-auto flex min-h-screen max-w-7xl flex-row gap-6 p-4 md:p-6">
       <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-3xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4 md:flex">
         <div className="mb-6 flex items-center gap-3 px-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--color-accent)] text-[var(--color-accent-fg)]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--color-accent)] text-[var(--color-accent-fg)]">
             <FileAudio className="h-5 w-5" />
           </div>
-          <div>
+          <div className="min-w-0 text-start">
             <div className="text-sm font-bold">پنل رونویسی</div>
             <div className="text-xs text-[var(--color-muted)]">یادداشت جلسات</div>
           </div>
@@ -53,8 +53,8 @@ export function AppLayout() {
                 )
               }
             >
-              <link.icon className="h-4 w-4" />
-              {link.label}
+              <link.icon className="h-4 w-4 shrink-0" />
+              <span>{link.label}</span>
             </NavLink>
           ))}
           {user?.role === 'admin' && (
@@ -69,8 +69,8 @@ export function AppLayout() {
                 )
               }
             >
-              <Users className="h-4 w-4" />
-              کاربران
+              <Users className="h-4 w-4 shrink-0" />
+              <span>کاربران</span>
             </NavLink>
           )}
         </nav>

@@ -64,7 +64,7 @@ export function SessionPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1 text-start">
           <h1 className="text-2xl font-bold">{session.title}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--color-muted)]">
             <Badge>{STATUS_LABELS[session.status] || session.status}</Badge>
@@ -72,7 +72,7 @@ export function SessionPage() {
             <span>{formatDate(session.updated_at)}</span>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {(session.status === 'draft' || session.status === 'recording') && (
             <Link to={`/live/${session.id}`}>
               <Button variant="secondary">ادامه ضبط</Button>
@@ -106,7 +106,7 @@ export function SessionPage() {
               session.status === 'draft') && (
               <Button onClick={() => void reprocess(false)}>پردازش دوباره</Button>
             )}
-          {canReprocess && processing && (
+          {canReprocess && (processing || session.status === 'queued') && (
             <Button variant="secondary" onClick={() => void reprocess(true)}>
               قطع و تلاش دوباره
             </Button>
@@ -115,15 +115,23 @@ export function SessionPage() {
       </div>
 
       {processing && (
-        <Card className="space-y-3">
+        <Card className="space-y-3 text-start">
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-medium">
               {downloading ? 'در حال دانلود مدل از Hugging Face' : 'وضعیت پردازش'}
             </span>
-            <span className="tabular-nums text-[var(--color-muted)]">{session.progress || 0}٪</span>
+            <span className="tabular-nums shrink-0 text-[var(--color-muted)]">
+              {session.progress || 0}%
+            </span>
           </div>
           <Progress value={session.progress || 0} />
-          <p className="text-sm leading-6">{session.progress_message}</p>
+          <p className="text-sm leading-7">{session.progress_message}</p>
+          {session.status === 'queued' && (
+            <p className="text-xs text-[var(--color-muted)]">
+              اگر مدت زیادی در صف ماند، کارگر ممکن است روی دانلود قبلی گیر کرده باشد — «قطع و
+              تلاش دوباره» را بزنید تا قفل آزاد شود.
+            </p>
+          )}
           {downloading && (
             <p className="text-xs text-[var(--color-muted)]">
               اولین اجرای زبان فارسی مدل هم‌ترازی (~۱٫۲ گیگ) را می‌گیرد. پیشرفت هر ثانیه

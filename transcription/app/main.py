@@ -23,7 +23,7 @@ from app.auth import (
     verify_password,
 )
 from app.config import settings
-from app.contract import QUEUE_KEY, export_srt, export_txt, session_body
+from app.contract import CANCEL_PREFIX, GPU_LOCK, QUEUE_KEY, export_srt, export_txt, session_body
 
 log = logging.getLogger(__name__)
 
@@ -424,6 +424,15 @@ def finalize_session(
         "processing",
     }:
         raise HTTPException(status_code=429, detail="صف پردازش پر است")
+
+    if force:
+        # Abort in-flight worker for this session and clear GPU / queue duplicates.
+        redis_client.setex(f"{CANCEL_PREFIX}{session_id}", 3600, "1")
+        current = redis_client.get(GPU_LOCK)
+        if current == session_id:
+            redis_client.delete(GPU_LOCK)
+        redis_client.lrem(QUEUE_KEY, 0, session_id)
+
     db.update_session(
         session_id,
         status="queued",
