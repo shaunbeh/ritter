@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 const schema = z.object({
-  email: z.email('ایمیل نامعتبر است'),
+  email: z.string().min(3, 'ایمیل نامعتبر است'),
   password: z.string().min(1, 'رمز عبور لازم است'),
 })
 

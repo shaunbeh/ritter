@@ -7,7 +7,7 @@ import redis
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 from app import db, storage
 from app.auth import (
@@ -73,7 +73,7 @@ app.add_middleware(
 
 
 class LoginBody(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=3, max_length=254)
     password: str
 
 
@@ -82,7 +82,7 @@ class RefreshBody(BaseModel):
 
 
 class UserCreateBody(BaseModel):
-    email: EmailStr
+    email: str = Field(min_length=3, max_length=254)
     name: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=8, max_length=128)
     role: str = "user"
@@ -174,9 +174,16 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+def _email(value: str) -> str:
+    email = value.strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise HTTPException(status_code=400, detail="ایمیل نامعتبر است")
+    return email
+
+
 @app.post("/auth/login")
 def login(body: LoginBody) -> dict:
-    user = db.get_user_by_email(str(body.email))
+    user = db.get_user_by_email(_email(body.email))
     if user is None or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="ایمیل یا رمز عبور نادرست است")
     return {
@@ -245,11 +252,12 @@ def list_users(_admin: dict = Depends(require_admin)) -> dict:
 def create_user(body: UserCreateBody, _admin: dict = Depends(require_admin)) -> dict:
     if body.role not in {"admin", "user"}:
         raise HTTPException(status_code=400, detail="نقش نامعتبر است")
-    if db.get_user_by_email(str(body.email)):
+    email = _email(body.email)
+    if db.get_user_by_email(email):
         raise HTTPException(status_code=409, detail="این ایمیل قبلا ثبت شده است")
     user = db.create_user(
         str(uuid.uuid4()),
-        str(body.email),
+        email,
         body.name.strip(),
         hash_password(body.password),
         role=body.role,

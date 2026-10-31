@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { formatDate } from '@/lib/utils'
 
 const schema = z.object({
-  email: z.email('ایمیل نامعتبر'),
+  email: z.string().min(3, 'ایمیل نامعتبر'),
   name: z.string().min(1),
   password: z.string().min(8, 'حداقل ۸ کاراکتر'),
   role: z.enum(['user', 'admin']),
