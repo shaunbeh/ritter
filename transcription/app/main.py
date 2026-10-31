@@ -405,14 +405,24 @@ async def upload_source(
 
 
 @app.post("/v1/sessions/{session_id}/finalize", status_code=202)
-def finalize_session(session_id: str, user: dict = Depends(get_current_user)) -> JSONResponse:
+def finalize_session(
+    session_id: str,
+    force: bool = Query(default=False),
+    user: dict = Depends(get_current_user),
+) -> JSONResponse:
     session = _owned_session(session_id, user)
-    if session["status"] in {"queued", "processing"}:
-        raise HTTPException(status_code=409, detail="قبلا در صف است")
+    if session["status"] in {"queued", "processing"} and not force:
+        raise HTTPException(
+            status_code=409,
+            detail="قبلا در صف است — برای قطع و تلاش دوباره force=true بفرستید",
+        )
     assets = db.list_assets(session_id)
     if not assets:
         raise HTTPException(status_code=400, detail="هیچ فایل یا تکه‌ای وجود ندارد")
-    if db.count_active_sessions() >= settings.max_queue_depth:
+    if db.count_active_sessions() >= settings.max_queue_depth and session["status"] not in {
+        "queued",
+        "processing",
+    }:
         raise HTTPException(status_code=429, detail="صف پردازش پر است")
     db.update_session(
         session_id,
@@ -420,6 +430,7 @@ def finalize_session(session_id: str, user: dict = Depends(get_current_user)) ->
         progress=0,
         progress_message="در صف پردازش",
         error=None,
+        result=None,
     )
     _enqueue(session_id)
     updated = db.get_session(session_id)

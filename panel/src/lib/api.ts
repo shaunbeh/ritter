@@ -229,8 +229,10 @@ export const sessionsApi = {
       body: form,
     })
   },
-  finalize: (id: string) =>
-    api<Session>(`/v1/sessions/${id}/finalize`, { method: 'POST' }),
+  finalize: (id: string, force = false) =>
+    api<Session>(`/v1/sessions/${id}/finalize${force ? '?force=true' : ''}`, {
+      method: 'POST',
+    }),
   exportUrl: (id: string, format: string) => `/v1/sessions/${id}/export?format=${format}`,
 }
 

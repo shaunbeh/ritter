@@ -38,7 +38,7 @@ export function SessionPage() {
     enabled: Boolean(id),
     refetchInterval: (q) => {
       const status = q.state.data?.status
-      return status === 'queued' || status === 'processing' ? 2000 : false
+      return status === 'queued' || status === 'processing' ? 1000 : false
     },
   })
 
@@ -46,6 +46,20 @@ export function SessionPage() {
   if (error || !session) return <p className="text-sm text-[var(--color-danger)]">نشست یافت نشد</p>
 
   const processing = session.status === 'queued' || session.status === 'processing'
+  const downloading =
+    processing &&
+    Boolean(
+      session.progress_message &&
+        (session.progress_message.includes('دانلود') ||
+          session.progress_message.toLowerCase().includes('download') ||
+          session.progress_message.includes('هم‌ترازی')),
+    )
+  const canReprocess = (session.assets?.length || 0) > 0
+
+  const reprocess = async (force = false) => {
+    await sessionsApi.finalize(id, force)
+    await queryClient.invalidateQueries({ queryKey: ['session', id] })
+  }
 
   return (
     <div className="space-y-6">
@@ -86,24 +100,36 @@ export function SessionPage() {
               </Button>
             </>
           )}
-          {(session.status === 'failed' || session.status === 'completed' || session.status === 'draft') &&
-            (session.assets?.length || 0) > 0 && (
-              <Button
-                onClick={async () => {
-                  await sessionsApi.finalize(id)
-                  await queryClient.invalidateQueries({ queryKey: ['session', id] })
-                }}
-              >
-                پردازش دوباره
-              </Button>
+          {canReprocess &&
+            (session.status === 'failed' ||
+              session.status === 'completed' ||
+              session.status === 'draft') && (
+              <Button onClick={() => void reprocess(false)}>پردازش دوباره</Button>
             )}
+          {canReprocess && processing && (
+            <Button variant="secondary" onClick={() => void reprocess(true)}>
+              قطع و تلاش دوباره
+            </Button>
+          )}
         </div>
       </div>
 
       {processing && (
-        <Card className="space-y-2">
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">
+              {downloading ? 'در حال دانلود مدل از Hugging Face' : 'وضعیت پردازش'}
+            </span>
+            <span className="tabular-nums text-[var(--color-muted)]">{session.progress || 0}٪</span>
+          </div>
           <Progress value={session.progress || 0} />
-          <p className="text-sm">{session.progress_message}</p>
+          <p className="text-sm leading-6">{session.progress_message}</p>
+          {downloading && (
+            <p className="text-xs text-[var(--color-muted)]">
+              اولین اجرای زبان فارسی مدل هم‌ترازی (~۱٫۲ گیگ) را می‌گیرد. پیشرفت هر ثانیه
+              به‌روز می‌شود. اگر متوقف ماند، «قطع و تلاش دوباره» را بزنید.
+            </p>
+          )}
         </Card>
       )}
 
