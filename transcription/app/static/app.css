@@ -70,7 +70,7 @@ body {
 
 .form,
 .results,
-.status,
+.progress-panel,
 .error {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -137,6 +137,47 @@ input[type="file"] {
   cursor: pointer;
 }
 
+.source {
+  display: grid;
+  gap: 1rem;
+}
+
+.record-box {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.7);
+}
+
+.record-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.record-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.record-status.live {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+#preview {
+  width: 100%;
+  margin-top: 0.2rem;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -166,14 +207,56 @@ button.ghost {
   border: 1px solid color-mix(in srgb, var(--accent) 45%, white);
 }
 
-.status,
+button.recording {
+  background: #9b2c2c;
+  color: #fff7f7;
+  border-color: transparent;
+}
+
+.progress-panel,
 .error {
   margin: 1rem 0 0;
   padding: 0.9rem 1rem;
 }
 
-.status {
+.progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.status-line {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+#progress-pct {
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+  margin-top: 0.7rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: rgba(21, 32, 24, 0.08);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0f6b4c, #2f9e6f);
+  transition: width 0.35s ease;
+}
+
+.progress-detail {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
 .error {

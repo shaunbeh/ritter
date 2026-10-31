@@ -16,9 +16,9 @@
     <main class="shell">
       <header class="hero">
         <p class="brand">Transcription</p>
-        <h1>Upload audio. Get speakers, timestamps, and a summary.</h1>
+        <h1>Upload or record. Get speakers, timestamps, and a summary.</h1>
         <p class="lede">
-          Paste your API key, choose a file, and wait while the L4 worker finishes the job.
+          Paste your API key, then upload a file or record from your microphone.
         </p>
       </header>
 
@@ -36,16 +36,27 @@
           />
         </label>
 
-        <label class="field">
-          <span>Audio or video file</span>
-          <input
-            id="file"
-            name="file"
-            type="file"
-            accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.webm,.mp4"
-            required
-          />
-        </label>
+        <div class="source">
+          <label class="field grow">
+            <span>Audio or video file</span>
+            <input
+              id="file"
+              name="file"
+              type="file"
+              accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.flac,.webm,.mp4"
+            />
+          </label>
+
+          <div class="record-box">
+            <span class="record-label">Or microphone</span>
+            <div class="record-actions">
+              <button id="record-btn" type="button" class="ghost">Start recording</button>
+              <button id="clear-recording" type="button" class="ghost" hidden>Clear clip</button>
+            </div>
+            <p id="record-status" class="record-status">No recording yet</p>
+            <audio id="preview" controls hidden></audio>
+          </div>
+        </div>
 
         <div class="row">
           <label class="field grow">
@@ -74,7 +85,16 @@
         </div>
       </form>
 
-      <p id="status" class="status" hidden></p>
+      <section id="progress-panel" class="progress-panel" hidden>
+        <div class="progress-head">
+          <p id="status" class="status-line"></p>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <p id="progress-detail" class="progress-detail"></p>
+      </section>
       <p id="error" class="error" hidden></p>
 
       <section id="results" class="results" hidden>

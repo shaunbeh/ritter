@@ -29,6 +29,7 @@ x-transcription-env: &transcription-env
   MAX_QUEUE_DEPTH: ${MAX_QUEUE_DEPTH:-20}
   HF_HOME: /cache/huggingface
   HUGGINGFACE_HUB_CACHE: /cache/huggingface
+  HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
   NLTK_DATA: /cache/nltk
   WHISPER_DOWNLOAD_ROOT: /cache/whisper
 

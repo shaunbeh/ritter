@@ -81,14 +81,19 @@ def process(job_id: str) -> None:
             settings.whisper_model,
             settings.whisper_device,
         )
+        def on_progress(value: int, message: str) -> None:
+            db.set_progress(job_id, value, message)
+
         result = transcribe_file(
             path,
             job["language"],
             job["diarize"],
             job["min_speakers"],
             job["max_speakers"],
+            progress=on_progress,
         )
         if job["summarize"]:
+            db.set_progress(job_id, 92, "Asking the LLM for a summary")
             summary, summary_error = summarize(result["segments"], result.get("language"))
             result["summary"] = summary
             if summary_error:

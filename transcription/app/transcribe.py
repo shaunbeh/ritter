@@ -1,9 +1,12 @@
 import gc
 import logging
+from collections.abc import Callable
 
 from app.config import redact, settings
 
 log = logging.getLogger(__name__)
+
+ProgressFn = Callable[[int, str], None]
 
 
 class LowVramError(RuntimeError):
@@ -68,12 +71,22 @@ def _segments(raw_segments: list[dict]) -> list[dict]:
     return segments
 
 
+def _report(progress: ProgressFn | None, value: int, message: str) -> None:
+    if progress is None:
+        return
+    try:
+        progress(value, message)
+    except Exception:
+        log.exception("Progress callback failed")
+
+
 def transcribe_file(
     path: str,
     language: str | None,
     diarize: bool,
     min_speakers: int | None,
     max_speakers: int | None,
+    progress: ProgressFn | None = None,
 ) -> dict:
     import torch
     import whisperx
@@ -87,9 +100,15 @@ def transcribe_file(
         raise RuntimeError("WHISPER_DEVICE=cuda but this process cannot see a GPU")
 
     ensure_vram()
+    _report(progress, 12, "Loading audio")
     audio = whisperx.load_audio(path)
     detected = language
 
+    _report(
+        progress,
+        20,
+        f"Loading Whisper model ({settings.whisper_model}) — first run downloads weights",
+    )
     model = whisperx.load_model(
         settings.whisper_model,
         device,
@@ -97,6 +116,7 @@ def transcribe_file(
         download_root=settings.whisper_download_root,
     )
     try:
+        _report(progress, 45, "Transcribing speech")
         result = model.transcribe(
             audio,
             batch_size=settings.whisper_batch_size,
@@ -109,6 +129,7 @@ def transcribe_file(
     detected = result.get("language") or detected
     aligned_segments = result.get("segments") or []
     try:
+        _report(progress, 60, f"Aligning timestamps ({detected or 'auto'})")
         align_model, metadata = whisperx.load_align_model(
             language_code=detected,
             device=device,
@@ -129,6 +150,7 @@ def transcribe_file(
             _release_cuda()
     except ValueError as exc:
         log.warning("Alignment skipped: %s", exc)
+        _report(progress, 65, "Alignment unavailable for this language; continuing")
 
     diarization_error = None
     if diarize and not settings.hf_token:
@@ -137,6 +159,7 @@ def transcribe_file(
             "Accept the pyannote model terms and set HF_TOKEN."
         )
     elif diarize:
+        _report(progress, 75, "Identifying speakers (may download diarization models)")
         pipeline_kwargs = {}
         if settings.diarize_model:
             pipeline_kwargs["model_name"] = settings.diarize_model
@@ -167,6 +190,7 @@ def transcribe_file(
             del diarize_model
             _release_cuda()
 
+    _report(progress, 88, "Packaging transcript")
     payload = {
         "language": detected,
         "segments": _segments(aligned_segments),

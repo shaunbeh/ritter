@@ -28,10 +28,14 @@ CREATE TABLE IF NOT EXISTS jobs (
     callback_url TEXT,
     result JSONB,
     error TEXT,
+    progress INT NOT NULL DEFAULT 0,
+    progress_message TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs (status);
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS progress INT NOT NULL DEFAULT 0;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS progress_message TEXT;
 """
 
 
@@ -100,7 +104,8 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         row = conn.execute(
             """
             SELECT id::text, status, language, result, error, callback_url,
-                   object_key, filename, summarize, diarize, min_speakers, max_speakers
+                   object_key, filename, summarize, diarize, min_speakers, max_speakers,
+                   progress, progress_message
             FROM jobs
             WHERE id = %s
             """,
@@ -121,6 +126,8 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         "diarize": row[9],
         "min_speakers": row[10],
         "max_speakers": row[11],
+        "progress": row[12],
+        "progress_message": row[13],
     }
 
 
@@ -129,7 +136,11 @@ def mark_processing(job_id: str) -> bool:
         row = conn.execute(
             """
             UPDATE jobs
-            SET status = 'processing', updated_at = now(), error = NULL
+            SET status = 'processing',
+                progress = 5,
+                progress_message = 'Starting',
+                updated_at = now(),
+                error = NULL
             WHERE id = %s AND status = 'queued'
             RETURNING id
             """,
@@ -138,12 +149,31 @@ def mark_processing(job_id: str) -> bool:
     return row is not None
 
 
+def set_progress(job_id: str, progress: int, message: str) -> None:
+    with pool.connection() as conn:
+        conn.execute(
+            """
+            UPDATE jobs
+            SET progress = %s,
+                progress_message = %s,
+                updated_at = now()
+            WHERE id = %s AND status = 'processing'
+            """,
+            (max(0, min(100, int(progress))), message[:240], job_id),
+        )
+
+
 def complete_job(job_id: str, result: dict[str, Any]) -> None:
     with pool.connection() as conn:
         conn.execute(
             """
             UPDATE jobs
-            SET status = 'completed', result = %s, error = NULL, updated_at = now()
+            SET status = 'completed',
+                result = %s,
+                error = NULL,
+                progress = 100,
+                progress_message = 'Completed',
+                updated_at = now()
             WHERE id = %s
             """,
             (Json(result), job_id),
@@ -155,7 +185,10 @@ def fail_job(job_id: str, error: str) -> None:
         conn.execute(
             """
             UPDATE jobs
-            SET status = 'failed', error = %s, updated_at = now()
+            SET status = 'failed',
+                error = %s,
+                progress_message = 'Failed',
+                updated_at = now()
             WHERE id = %s AND status <> 'completed'
             """,
             (error[:4000], job_id),
