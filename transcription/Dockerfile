@@ -52,6 +52,10 @@ print("\n".join(libs))
 PY
 RUN ldconfig
 
+# Auth/panel deps in a separate layer so JWT updates do not rebuild WhisperX/torch.
+COPY requirements-auth.txt .
+RUN pip install --no-cache-dir -r requirements-auth.txt
+
 COPY app ./app
 
 RUN mkdir -p /cache/huggingface /cache/nltk /cache/whisper
