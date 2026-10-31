@@ -160,16 +160,17 @@ def transcribe_file(
         )
     elif diarize:
         _report(progress, 75, "Identifying speakers (may download diarization models)")
-        pipeline_kwargs = {}
-        if settings.diarize_model:
-            pipeline_kwargs["model_name"] = settings.diarize_model
-        diarize_model = DiarizationPipeline(
-            token=settings.hf_token,
-            device=device,
-            cache_dir=settings.whisper_download_root,
-            **pipeline_kwargs,
-        )
+        diarize_model = None
         try:
+            pipeline_kwargs = {}
+            if settings.diarize_model:
+                pipeline_kwargs["model_name"] = settings.diarize_model
+            diarize_model = DiarizationPipeline(
+                token=settings.hf_token,
+                device=device,
+                cache_dir=settings.whisper_download_root,
+                **pipeline_kwargs,
+            )
             call_kwargs = {}
             if min_speakers is not None:
                 call_kwargs["min_speakers"] = min_speakers
@@ -187,7 +188,8 @@ def transcribe_file(
             log.exception("Diarization failed")
             diarization_error = redact(str(exc))
         finally:
-            del diarize_model
+            if diarize_model is not None:
+                del diarize_model
             _release_cuda()
 
     _report(progress, 88, "Packaging transcript")

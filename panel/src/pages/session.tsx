@@ -111,6 +111,12 @@ export function SessionPage() {
         <Card className="border-red-200 bg-red-50 text-sm text-[var(--color-danger)]">{session.error}</Card>
       )}
 
+      {session.diarization_error && (
+        <Card className="border-amber-200 bg-amber-50 text-sm text-[var(--color-warn)]">
+          تشخیص گوینده انجام نشد: {session.diarization_error}
+        </Card>
+      )}
+
       {session.summary && (
         <Card>
           <h2 className="mb-2 font-semibold">خلاصه</h2>
