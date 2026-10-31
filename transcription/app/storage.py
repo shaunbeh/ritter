@@ -1,3 +1,8 @@
+import io
+from datetime import timedelta
+from typing import Any
+from urllib.parse import urlparse
+
 from minio import Minio
 from minio.error import S3Error
 
@@ -21,8 +26,6 @@ def ensure_bucket() -> None:
 
 
 def put_audio(object_key: str, data: bytes, content_type: str) -> None:
-    import io
-
     client.put_object(
         settings.minio_bucket,
         object_key,
@@ -36,5 +39,50 @@ def download_audio(object_key: str, dest_path: str) -> None:
     client.fget_object(settings.minio_bucket, object_key, dest_path)
 
 
+def get_bytes(object_key: str) -> bytes:
+    response = client.get_object(settings.minio_bucket, object_key)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
+
+
 def delete_audio(object_key: str) -> None:
     client.remove_object(settings.minio_bucket, object_key)
+
+
+def list_prefix(prefix: str) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for obj in client.list_objects(settings.minio_bucket, prefix=prefix, recursive=True):
+        if obj.is_dir:
+            continue
+        items.append(
+            {
+                "key": obj.object_name,
+                "size": obj.size or 0,
+                "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
+                "etag": obj.etag,
+            }
+        )
+    items.sort(key=lambda item: item.get("last_modified") or "", reverse=True)
+    return items
+
+
+def presigned_get(object_key: str, expires_seconds: int = 600) -> str:
+    url = client.presigned_get_object(
+        settings.minio_bucket,
+        object_key,
+        expires=timedelta(seconds=expires_seconds),
+    )
+    # Inside Docker, endpoint is minio:9000. Rewrite for browser via nginx optional later.
+    parsed = urlparse(url)
+    return url if parsed.netloc else url
+
+
+def user_prefix(user_id: str) -> str:
+    return f"users/{user_id}/"
+
+
+def session_prefix(user_id: str, session_id: str) -> str:
+    return f"users/{user_id}/sessions/{session_id}/"

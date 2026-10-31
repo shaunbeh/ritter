@@ -31,6 +31,8 @@ def redact(text: str) -> str:
         os.getenv("MINIO_SECRET_KEY", ""),
         os.getenv("MINIO_ROOT_PASSWORD", ""),
         os.getenv("API_KEY", ""),
+        os.getenv("JWT_SECRET", ""),
+        os.getenv("ADMIN_PASSWORD", ""),
     ):
         secret = secret.strip()
         if secret:
@@ -42,12 +44,18 @@ def redact(text: str) -> str:
 class Settings:
     database_url: str
     redis_url: str
-    api_keys: tuple[str, ...]
     minio_endpoint: str
     minio_access_key: str
     minio_secret_key: str
     minio_bucket: str
     minio_secure: bool
+    jwt_secret: str
+    jwt_access_minutes: int
+    jwt_refresh_days: int
+    admin_email: str
+    admin_password: str
+    admin_name: str
+    cors_origins: tuple[str, ...]
     hf_token: str
     whisper_model: str
     whisper_device: str
@@ -65,16 +73,26 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    keys = tuple(part.strip() for part in os.getenv("API_KEY", "").split(",") if part.strip())
+    cors = tuple(
+        part.strip().rstrip("/")
+        for part in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+        if part.strip()
+    )
     return Settings(
         database_url=_required("DATABASE_URL"),
         redis_url=os.getenv("REDIS_URL", "redis://redis:6379/0"),
-        api_keys=keys,
         minio_endpoint=os.getenv("MINIO_ENDPOINT", "minio:9000"),
         minio_access_key=_required("MINIO_ACCESS_KEY"),
         minio_secret_key=_required("MINIO_SECRET_KEY"),
         minio_bucket=os.getenv("MINIO_BUCKET", "transcriptions"),
         minio_secure=_bool("MINIO_SECURE", False),
+        jwt_secret=_required("JWT_SECRET"),
+        jwt_access_minutes=_int("JWT_ACCESS_MINUTES", 60),
+        jwt_refresh_days=_int("JWT_REFRESH_DAYS", 30),
+        admin_email=os.getenv("ADMIN_EMAIL", "admin@local").strip().lower(),
+        admin_password=os.getenv("ADMIN_PASSWORD", "change-me-admin"),
+        admin_name=os.getenv("ADMIN_NAME", "مدیر"),
+        cors_origins=cors or ("http://localhost:3000",),
         hf_token=os.getenv("HF_TOKEN", "").strip(),
         whisper_model=os.getenv("WHISPER_MODEL", "medium"),
         whisper_device=os.getenv("WHISPER_DEVICE", "cuda"),

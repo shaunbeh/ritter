@@ -1,15 +1,15 @@
 import logging
 import os
+import subprocess
 import tempfile
 import time
 from pathlib import Path
 
-import httpx
 import redis
 
 from app.config import redact, settings
 from app import db, storage
-from app.contract import QUEUE_KEY, job_body
+from app.contract import QUEUE_KEY
 from app.summarize import summarize
 from app.transcribe import LowVramError, ensure_vram, transcribe_file
 
@@ -19,7 +19,6 @@ GPU_LOCK = "transcription:gpu"
 RECOVER_LOCK = "transcription:recover"
 LOCK_TTL_SECONDS = 6 * 60 * 60
 
-# socket_timeout must exceed BLPOP's wait, otherwise an empty queue raises TimeoutError.
 redis_client = redis.Redis.from_url(
     settings.redis_url,
     decode_responses=True,
@@ -30,93 +29,138 @@ redis_client = redis.Redis.from_url(
 )
 
 
-def _notify(job: dict) -> None:
-    callback = job.get("callback_url")
-    if not callback:
+def _run_ffmpeg(cmd: list[str]) -> None:
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "ffmpeg failed")[-1000:])
+
+
+def _concat_assets(assets: list[dict], dest: str) -> None:
+    if not assets:
+        raise RuntimeError("no assets")
+    if len(assets) == 1:
+        storage.download_audio(assets[0]["object_key"], dest)
         return
+
+    tmp_dir = tempfile.mkdtemp(prefix="tx-concat-")
     try:
-        with httpx.Client(timeout=15, follow_redirects=False) as client:
-            response = client.post(callback, json=job_body(job))
-            response.raise_for_status()
-    except Exception:
-        log.exception("Callback failed for %s", job["id"])
+        list_file = str(Path(tmp_dir) / "list.txt")
+        with open(list_file, "w", encoding="utf-8") as handle:
+            for index, asset in enumerate(assets):
+                suffix = Path(asset.get("filename") or asset["object_key"]).suffix or ".webm"
+                path = str(Path(tmp_dir) / f"part-{index:05d}{suffix}")
+                storage.download_audio(asset["object_key"], path)
+                escaped = path.replace("'", r"'\''")
+                handle.write(f"file '{escaped}'\n")
 
-
-def _finish(job_id: str, delete_audio: bool, object_key: str) -> None:
-    if delete_audio:
         try:
-            storage.delete_audio(object_key)
-        except Exception:
-            log.exception("Could not delete audio for %s", job_id)
-    job = db.get_job(job_id)
-    if job is not None and job["status"] in {"completed", "failed"}:
-        _notify(job)
+            _run_ffmpeg(
+                ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c", "copy", dest]
+            )
+        except RuntimeError:
+            wav_dest = dest if dest.endswith(".wav") else f"{dest}.wav"
+            _run_ffmpeg(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "concat",
+                    "-safe",
+                    "0",
+                    "-i",
+                    list_file,
+                    "-ar",
+                    "16000",
+                    "-ac",
+                    "1",
+                    wav_dest,
+                ]
+            )
+            if wav_dest != dest:
+                os.replace(wav_dest, dest)
+    finally:
+        for root, _dirs, files in os.walk(tmp_dir, topdown=False):
+            for name in files:
+                try:
+                    os.unlink(os.path.join(root, name))
+                except OSError:
+                    pass
+            try:
+                os.rmdir(root)
+            except OSError:
+                pass
 
 
-def process(job_id: str) -> None:
-    job = db.get_job(job_id)
-    if job is None or job["status"] in {"completed", "failed", "processing"}:
+def process(session_id: str) -> None:
+    session = db.get_session(session_id)
+    if session is None or session["status"] in {"completed", "failed", "processing"}:
         return
 
-    if not redis_client.set(GPU_LOCK, job_id, nx=True, ex=LOCK_TTL_SECONDS):
-        redis_client.rpush(QUEUE_KEY, job_id)
+    if not redis_client.set(GPU_LOCK, session_id, nx=True, ex=LOCK_TTL_SECONDS):
+        redis_client.rpush(QUEUE_KEY, session_id)
         time.sleep(5)
         return
 
     path = None
-    delete_audio = False
     retry_delay = 0
     try:
         ensure_vram()
-        if not db.mark_processing(job_id):
+        if not db.mark_session_processing(session_id):
             return
 
-        suffix = Path(job["filename"] or "audio").suffix or ".audio"
-        fd, path = tempfile.mkstemp(suffix=suffix)
+        assets = [
+            asset
+            for asset in db.list_assets(session_id)
+            if asset["kind"] in {"chunk", "source"}
+        ]
+        if not assets:
+            raise RuntimeError("هیچ فایلی برای پردازش نیست")
+
+        fd, path = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
-        storage.download_audio(job["object_key"], path)
+        db.set_session_progress(session_id, 8, "ادغام فایل‌های صوتی")
+        _concat_assets(assets, path)
+
         log.info(
-            "Transcribing %s with %s on %s",
-            job_id,
+            "Transcribing session %s with %s on %s",
+            session_id,
             settings.whisper_model,
             settings.whisper_device,
         )
+
         def on_progress(value: int, message: str) -> None:
-            db.set_progress(job_id, value, message)
+            db.set_session_progress(session_id, value, message)
 
         result = transcribe_file(
             path,
-            job["language"],
-            job["diarize"],
-            job["min_speakers"],
-            job["max_speakers"],
+            session["language"],
+            session["diarize"],
+            session["min_speakers"],
+            session["max_speakers"],
             progress=on_progress,
         )
-        if job["summarize"]:
-            db.set_progress(job_id, 92, "Asking the LLM for a summary")
+        if session["summarize"]:
+            db.set_session_progress(session_id, 92, "در حال خلاصه‌سازی با مدل زبانی")
             summary, summary_error = summarize(result["segments"], result.get("language"))
             result["summary"] = summary
             if summary_error:
                 result["summary_error"] = summary_error
-        db.complete_job(job_id, result)
-        delete_audio = True
-        log.info("Completed transcription %s", job_id)
+        db.complete_session(session_id, result)
+        log.info("Completed session %s", session_id)
     except LowVramError as exc:
-        log.warning("%s; job %s stays queued", exc, job_id)
-        db.requeue_job(job_id)
-        redis_client.rpush(QUEUE_KEY, job_id)
+        log.warning("%s; session %s stays queued", exc, session_id)
+        db.requeue_session(session_id)
+        redis_client.rpush(QUEUE_KEY, session_id)
         retry_delay = 15
     except Exception as exc:
-        log.exception("Transcription %s failed", job_id)
-        db.fail_job(job_id, redact(str(exc)))
-        delete_audio = True
+        log.exception("Session %s failed", session_id)
+        db.fail_session(session_id, redact(str(exc)))
     finally:
         if path and os.path.exists(path):
             os.unlink(path)
         current = redis_client.get(GPU_LOCK)
-        if current == job_id:
+        if current == session_id:
             redis_client.delete(GPU_LOCK)
-        _finish(job_id, delete_audio, job["object_key"])
     if retry_delay:
         time.sleep(retry_delay)
 
@@ -124,15 +168,13 @@ def process(job_id: str) -> None:
 def recover() -> None:
     if not redis_client.set(RECOVER_LOCK, "1", nx=True, ex=60):
         return
-    # This service runs a single worker. A lock left by a dead process would
-    # block the queue until its TTL, so drop it on startup.
     redis_client.delete(GPU_LOCK)
-    db.requeue_processing()
+    db.requeue_processing_sessions()
     present = set(redis_client.lrange(QUEUE_KEY, 0, -1))
-    for job_id in db.ids_with_status("queued"):
-        if job_id not in present:
-            redis_client.rpush(QUEUE_KEY, job_id)
-            log.warning("Requeued job %s", job_id)
+    for session_id in db.ids_with_session_status("queued"):
+        if session_id not in present:
+            redis_client.rpush(QUEUE_KEY, session_id)
+            log.warning("Requeued session %s", session_id)
 
 
 def check_gpu() -> None:
@@ -159,7 +201,7 @@ def main() -> None:
     storage.ensure_bucket()
     check_gpu()
     recover()
-    log.info("Worker waiting for jobs")
+    log.info("Worker waiting for sessions")
     while True:
         try:
             item = redis_client.blpop(QUEUE_KEY, timeout=5)
@@ -171,8 +213,8 @@ def main() -> None:
             continue
         if not item:
             continue
-        _key, job_id = item
-        process(job_id)
+        _key, session_id = item
+        process(session_id)
 
 
 if __name__ == "__main__":

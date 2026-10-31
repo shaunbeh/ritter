@@ -7,3 +7,6 @@ __pycache__/
 *.pyc
 .venv/
 transcription-deploy.tgz
+panel/node_modules/
+panel/dist/
+*.tsbuildinfo

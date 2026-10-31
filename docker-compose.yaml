@@ -14,7 +14,13 @@ x-transcription-env: &transcription-env
   MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
   MINIO_BUCKET: ${MINIO_BUCKET}
   MINIO_SECURE: "false"
-  API_KEY: ${API_KEY}
+  JWT_SECRET: ${JWT_SECRET}
+  JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
+  JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-30}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@local}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-admin}
+  ADMIN_NAME: ${ADMIN_NAME:-مدیر}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
   HF_TOKEN: ${HF_TOKEN:-}
   WHISPER_MODEL: ${WHISPER_MODEL:-medium}
   WHISPER_DEVICE: ${WHISPER_DEVICE:-cuda}
@@ -35,13 +41,15 @@ x-transcription-env: &transcription-env
 
 services:
   nginx:
-    image: nginx:1.28-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    image: transcription-nginx:local
     container_name: transcription-nginx
     restart: unless-stopped
     ports:
-      - "${NGINX_PORT:-1139}:80"
+      - "${NGINX_PORT:-3000}:80"
     volumes:
-      - ./conf.d:/etc/nginx/conf.d:ro
       - ./logs:/var/log/nginx
     depends_on:
       transcription-api:

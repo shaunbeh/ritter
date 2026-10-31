@@ -31,7 +31,8 @@ if (Test-Path -LiteralPath $EnvOutputPath) {
 $secrets = [ordered]@{
     'POSTGRES_PASSWORD'    = New-UrlSafeSecret
     'MINIO_ROOT_PASSWORD'  = New-UrlSafeSecret
-    'API_KEY'              = New-UrlSafeSecret
+    'JWT_SECRET'           = New-UrlSafeSecret
+    'ADMIN_PASSWORD'       = New-UrlSafeSecret
 }
 
 $content = Get-Content -LiteralPath $EnvExamplePath -Raw
